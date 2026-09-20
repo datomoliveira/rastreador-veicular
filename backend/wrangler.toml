@@ -17,10 +17,9 @@ DEFAULT_SPEED_LIMIT_KMH = "80"
 [[d1_databases]]
 binding = "DB"
 database_name = "rastreador_db"
-# Substitua pelo ID gerado ao executar: npx wrangler d1 create rastreador_db
-database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+database_id = "d4f37fec-4b99-4948-adfb-b324c838ff93"
 
 # Tarefa Agendada (Cron Trigger) - 100% Gratuita
 # Executa aos domingos às 03:00 para limpar histórico com mais de 45 dias
 [triggers]
-crons = ["0 3 * * 0"]
+crons = ["0 3 * * SUN"]

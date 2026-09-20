@@ -5,7 +5,7 @@
 
 // Estado Global da Aplicação
 const state = {
-  apiUrl: localStorage.getItem('trackzero_api_url') || '',
+  apiUrl: localStorage.getItem('trackzero_api_url') || 'https://rastreador-veicular-api.kistenmackermaia.workers.dev',
   pollIntervalMs: parseInt(localStorage.getItem('trackzero_poll_interval') || '5000', 10),
   demoMode: localStorage.getItem('trackzero_demo_mode') === 'true',
   activeDeviceId: 'veiculo-01',
