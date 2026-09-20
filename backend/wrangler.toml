@@ -1,0 +1,26 @@
+name = "rastreador-veicular-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 100% Gratuito - Cloudflare Workers Standard
+[vars]
+ENABLE_ALERTS = "true"
+# Tópico padrão para notificações no ntfy.sh (ex: acesse https://ntfy.sh/dona_edna_rastreador)
+NTFY_TOPIC = "dona_edna_rastreador_alerta"
+# Telegram Bot opcional (Token e Chat ID podem ser adicionados via wrangler secret put)
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_CHAT_ID = ""
+DEFAULT_SPEED_LIMIT_KMH = "80"
+
+# Banco de dados D1 (SQLite Serverless)
+[[d1_databases]]
+binding = "DB"
+database_name = "rastreador_db"
+# Substitua pelo ID gerado ao executar: npx wrangler d1 create rastreador_db
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Tarefa Agendada (Cron Trigger) - 100% Gratuita
+# Executa aos domingos às 03:00 para limpar histórico com mais de 45 dias
+[triggers]
+crons = ["0 3 * * 0"]

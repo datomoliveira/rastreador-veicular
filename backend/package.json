@@ -1,0 +1,20 @@
+{
+  "name": "rastreador-veicular-backend",
+  "version": "1.0.0",
+  "description": "Backend Serverless de Rastreamento Veicular na Cloudflare",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init-local": "wrangler d1 execute rastreador_db --local --file=./db/schema.sql",
+    "db:init-remote": "wrangler d1 execute rastreador_db --remote --file=./db/schema.sql"
+  },
+  "dependencies": {
+    "hono": "^4.6.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240903.0",
+    "typescript": "^5.5.4",
+    "wrangler": "^3.75.0"
+  }
+}

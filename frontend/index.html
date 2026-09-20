@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Rastreador Veicular Serverless | Cloudflare</title>
+  <meta name="description" content="Dashboard de rastreamento veicular em tempo real 100% serverless e gratuito na Cloudflare." />
+  
+  <!-- Fontes Google Modernas -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <!-- Estilos da Aplicação -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="dark-theme">
+  <div id="app" class="app-container">
+    
+    <!-- Top Navigation Bar -->
+    <header class="top-nav">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-satellite-dish"></i>
+        </div>
+        <div class="brand-text">
+          <h1>TrackZero</h1>
+          <span class="badge-free">Cloudflare Serverless</span>
+        </div>
+      </div>
+
+      <div class="device-selector-wrapper">
+        <label for="deviceSelect" class="sr-only">Dispositivo</label>
+        <div class="select-box">
+          <i class="fa-solid fa-car-side"></i>
+          <select id="deviceSelect">
+            <option value="veiculo-01">Meu Veículo / Celular (veiculo-01)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="live-pill" id="connectionPill">
+          <span class="pulsing-dot"></span>
+          <span id="connectionText">Conectando...</span>
+        </div>
+        <button id="btnSettings" class="btn-icon" title="Configurações da API">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="main-layout">
+      
+      <!-- Side Navigation / Control Panel -->
+      <aside class="sidebar-panel">
+        
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+          <button class="tab-btn active" data-tab="live">
+            <i class="fa-solid fa-location-crosshairs"></i>
+            <span>Ao Vivo</span>
+          </button>
+          <button class="tab-btn" data-tab="history">
+            <i class="fa-solid fa-route"></i>
+            <span>Histórico</span>
+          </button>
+          <button class="tab-btn" data-tab="geofences">
+            <i class="fa-solid fa-draw-polygon"></i>
+            <span>Cercas</span>
+          </button>
+          <button class="tab-btn" data-tab="simulator">
+            <i class="fa-solid fa-gamepad"></i>
+            <span>Simulador</span>
+          </button>
+        </nav>
+
+        <!-- Tab Content 1: Live Status -->
+        <div id="tab-live" class="tab-pane active">
+          
+          <!-- Telemetry Quick Stats Cards -->
+          <div class="telemetry-grid">
+            
+            <!-- Velocímetro Card -->
+            <div class="card speed-card">
+              <div class="card-header">
+                <span class="card-title">Velocidade</span>
+                <i class="fa-solid fa-gauge-high text-cyan"></i>
+              </div>
+              <div class="speed-display">
+                <span id="liveSpeed" class="huge-metric">0</span>
+                <span class="unit">km/h</span>
+              </div>
+              <div class="speed-bar-track">
+                <div id="speedBarFill" class="speed-bar-fill" style="width: 0%"></div>
+              </div>
+              <div class="speed-footer">
+                <span>Limite: <strong id="speedLimitText">80 km/h</strong></span>
+                <span id="motionStatus" class="tag-status tag-parked">Parado</span>
+              </div>
+            </div>
+
+            <!-- Ignição Card -->
+            <div class="card stat-card">
+              <div class="stat-icon-wrapper" id="ignitionIconWrap">
+                <i class="fa-solid fa-key" id="ignitionIcon"></i>
+              </div>
+              <div class="stat-info">
+                <span class="label">Ignição</span>
+                <strong id="liveIgnition" class="val text-muted">Desligada</strong>
+              </div>
+            </div>
+
+            <!-- Bateria Card -->
+            <div class="card stat-card">
+              <div class="stat-icon-wrapper" id="batteryIconWrap">
+                <i class="fa-solid fa-battery-three-quarters text-emerald" id="batteryIcon"></i>
+              </div>
+              <div class="stat-info">
+                <span class="label">Bateria</span>
+                <strong id="liveBattery" class="val">-- %</strong>
+              </div>
+            </div>
+
+            <!-- Direção Card -->
+            <div class="card stat-card">
+              <div class="stat-icon-wrapper compass-wrapper">
+                <i class="fa-solid fa-location-arrow text-accent" id="headingCompass"></i>
+              </div>
+              <div class="stat-info">
+                <span class="label">Direção</span>
+                <strong id="liveHeading" class="val">0° Norte</strong>
+              </div>
+            </div>
+
+            <!-- Última Comunicação -->
+            <div class="card stat-card full-width">
+              <div class="stat-icon-wrapper">
+                <i class="fa-solid fa-clock-rotate-left text-amber"></i>
+              </div>
+              <div class="stat-info">
+                <span class="label">Último Sinal Recebido</span>
+                <strong id="liveLastSignal" class="val">Aguardando dados...</strong>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Coordenadas & Ações Rápidas -->
+          <div class="quick-actions-box">
+            <div class="coords-box">
+              <i class="fa-solid fa-map-pin"></i>
+              <span id="liveCoords">-23.550520, -46.633308</span>
+              <button id="btnCopyCoords" class="btn-tiny" title="Copiar Coordenadas">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+
+            <div class="actions-row">
+              <button id="btnCenterVehicle" class="btn-secondary">
+                <i class="fa-solid fa-crosshairs"></i> Centralizar
+              </button>
+              <a id="btnExternalMap" href="#" target="_blank" rel="noopener noreferrer" class="btn-secondary">
+                <i class="fa-brands fa-google"></i> Google Maps
+              </a>
+            </div>
+          </div>
+
+          <!-- Alertas Recentes -->
+          <div class="recent-alerts-section">
+            <div class="section-title">
+              <span>Alertas Recentes</span>
+              <span id="alertCountBadge" class="badge-pill">0</span>
+            </div>
+            <div id="alertsList" class="alerts-list">
+              <div class="empty-alerts">
+                <i class="fa-regular fa-bell-slash"></i>
+                <p>Nenhum alerta disparado hoje</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Tab Content 2: History Player -->
+        <div id="tab-history" class="tab-pane">
+          <div class="history-controls card">
+            <h3 class="panel-subtitle"><i class="fa-solid fa-calendar-day"></i> Filtrar Trajeto</h3>
+            
+            <div class="filter-group">
+              <button class="btn-chip active" data-range="today">Hoje</button>
+              <button class="btn-chip" data-range="yesterday">Ontem</button>
+              <button class="btn-chip" data-range="7days">Últimos 7 dias</button>
+            </div>
+
+            <button id="btnLoadHistory" class="btn-primary w-100">
+              <i class="fa-solid fa-magnifying-glass"></i> Carregar Rota
+            </button>
+          </div>
+
+          <!-- Resumo da Rota Carregada -->
+          <div id="historyStatsCard" class="card history-stats-card hidden">
+            <div class="history-stats-grid">
+              <div class="hstat-item">
+                <span class="hlabel">Distância</span>
+                <strong id="hDist" class="hval">0.0 km</strong>
+              </div>
+              <div class="hstat-item">
+                <span class="hlabel">Vel. Máxima</span>
+                <strong id="hMaxSpeed" class="hval">0 km/h</strong>
+              </div>
+              <div class="hstat-item">
+                <span class="hlabel">Vel. Média</span>
+                <strong id="hAvgSpeed" class="hval">0 km/h</strong>
+              </div>
+              <div class="hstat-item">
+                <span class="hlabel">Pontos</span>
+                <strong id="hPoints" class="hval">0</strong>
+              </div>
+            </div>
+
+            <!-- Player de Reprodução da Viagem -->
+            <div class="player-container">
+              <div class="player-buttons">
+                <button id="btnPlayPause" class="btn-player">
+                  <i class="fa-solid fa-play" id="playIcon"></i>
+                </button>
+                <div class="player-speed-selector">
+                  <span id="playerSpeedText">1x</span>
+                </div>
+              </div>
+
+              <input type="range" id="historyTimeline" min="0" max="100" value="0" class="custom-slider" />
+
+              <div class="player-time-info">
+                <span id="playerCurrentTime">--:--:--</span>
+                <span id="playerCurrentSpeed">0 km/h</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Content 3: Geofences -->
+        <div id="tab-geofences" class="tab-pane">
+          <div class="geofence-creator card">
+            <h3 class="panel-subtitle"><i class="fa-solid fa-plus-circle"></i> Nova Cerca Virtual</h3>
+            
+            <div class="form-group">
+              <label for="fenceName">Nome da Cerca</label>
+              <input type="text" id="fenceName" placeholder="Ex: Casa, Trabalho, Estacionamento" />
+            </div>
+
+            <div class="form-group">
+              <label for="fenceRadius">Raio: <strong id="radiusValueLabel">250m</strong></label>
+              <input type="range" id="fenceRadius" min="50" max="2000" step="25" value="250" class="custom-slider" />
+            </div>
+
+            <div class="checkbox-row">
+              <label><input type="checkbox" id="fenceAlertExit" checked /> Alertar ao Sair</label>
+              <label><input type="checkbox" id="fenceAlertEnter" /> Alertar ao Entrar</label>
+            </div>
+
+            <div class="btn-duo">
+              <button id="btnSetFenceAtVehicle" class="btn-secondary">
+                <i class="fa-solid fa-crosshairs"></i> No Carro
+              </button>
+              <button id="btnSaveFence" class="btn-primary">
+                <i class="fa-solid fa-check"></i> Salvar Cerca
+              </button>
+            </div>
+          </div>
+
+          <div class="geofences-list-section">
+            <h4 class="section-title">Cercas Ativas</h4>
+            <div id="geofencesList" class="geofences-list">
+              <!-- Renderizado dinamicamente -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Content 4: Simulador de Testes -->
+        <div id="tab-simulator" class="tab-pane">
+          <div class="card simulator-card">
+            <div class="sim-header">
+              <i class="fa-solid fa-satellite-dish text-cyan"></i>
+              <div>
+                <h4>Simulador de Direção GPS</h4>
+                <p>Teste o sistema imediatamente sem sair de casa enviando rotas simuladas para a API.</p>
+              </div>
+            </div>
+
+            <div class="sim-controls">
+              <div class="form-group">
+                <label for="simScenario">Cenário de Teste</label>
+                <select id="simScenario">
+                  <option value="drive_city">Passeio Urbano (São Paulo - Av. Paulista)</option>
+                  <option value="drive_speeding">Viagem com Excesso de Velocidade (Alerta > 80 km/h)</option>
+                  <option value="drive_geofence_exit">Saída da Cerca de Casa (Alerta de Saída)</option>
+                </select>
+              </div>
+
+              <div class="sim-buttons">
+                <button id="btnStartSimulation" class="btn-primary w-100">
+                  <i class="fa-solid fa-play"></i> Iniciar Simulação em Tempo Real
+                </button>
+                <button id="btnStopSimulation" class="btn-secondary w-100 hidden">
+                  <i class="fa-solid fa-stop"></i> Parar Simulação
+                </button>
+              </div>
+
+              <div class="sim-log-box" id="simLogBox">
+                <div class="log-line text-muted">[Pronto para simular telemetria]</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Map Container -->
+      <section class="map-section">
+        <div id="map" class="map-viewport"></div>
+
+        <!-- Floating Map Controls -->
+        <div class="floating-map-controls">
+          <button id="btnToggleMapLayer" class="floating-btn" title="Alternar Mapa (Satélite / Dark / Ruas)">
+            <i class="fa-solid fa-layer-group"></i>
+          </button>
+          <button id="btnFollowVehicle" class="floating-btn active" title="Seguir Veículo Automaticamente">
+            <i class="fa-solid fa-crosshairs"></i>
+          </button>
+          <button id="btnToggleTraffic" class="floating-btn" title="Zoom Fit">
+            <i class="fa-solid fa-expand"></i>
+          </button>
+        </div>
+
+        <!-- Floating Status Pill (Mobile) -->
+        <div class="mobile-status-bar">
+          <div class="m-speed">
+            <span id="mSpeedVal">0</span> <small>km/h</small>
+          </div>
+          <div class="m-divider"></div>
+          <div class="m-info">
+            <span id="mIgnitionVal">Ignição Off</span>
+            <span id="mUpdatedVal">--</span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Modal de Configurações da API -->
+    <div id="settingsModal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-sliders"></i> Configurações do Backend</h3>
+          <button id="btnCloseSettings" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="apiUrlInput">URL da API Cloudflare Workers</label>
+            <input type="text" id="apiUrlInput" placeholder="https://rastreador-api.seu-subdominio.workers.dev" />
+            <small class="text-muted">Deixe em branco ou "/" para usar a mesma origem ao hospedar no Cloudflare Pages.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="pollIntervalInput">Intervalo de Atualização Ao Vivo</label>
+            <select id="pollIntervalInput">
+              <option value="3000">A cada 3 segundos (Tempo Real fluido)</option>
+              <option value="5000" selected>A cada 5 segundos (Recomendado)</option>
+              <option value="10000">A cada 10 segundos (Ultra economia)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="demoModeToggle">
+              <input type="checkbox" id="demoModeToggle" />
+              <span>Modo Demonstração Offline (Gera dados locais se a API não estiver conectada)</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btnSaveSettings" class="btn-primary">Salvar Configurações</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- Scripts do App -->
+  <script src="app.js"></script>
+</body>
+</html>
