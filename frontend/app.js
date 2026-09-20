@@ -1,35 +1,49 @@
 /**
  * TrackZero - Aplicação Frontend de Rastreamento Veicular
  * Cloudflare Pages + Leaflet.js
+ * Visual Realista: Satélite Google Maps HD + Movimentação Suave 60FPS
  */
 
 // Estado Global da Aplicação
 const state = {
   apiUrl: localStorage.getItem('trackzero_api_url') || 'https://rastreador-veicular-api.kistenmackermaia.workers.dev',
-  pollIntervalMs: parseInt(localStorage.getItem('trackzero_poll_interval') || '5000', 10),
+  pollIntervalMs: parseInt(localStorage.getItem('trackzero_poll_interval') || '4000', 10),
   demoMode: localStorage.getItem('trackzero_demo_mode') === 'true',
   activeDeviceId: 'veiculo-01',
   followVehicle: true,
-  mapLayerType: 'dark', // 'dark' ou 'streets'
+  showTrail: true,
+  mapLayerType: localStorage.getItem('trackzero_layer') || 'google_hybrid', // 'google_hybrid', 'google_streets', 'dark'
   
   // Instâncias do Leaflet
   map: null,
+  currentTileLayer: null,
   vehicleMarker: null,
   accuracyCircle: null,
+  liveTrailPolyline: null,
+  recentCoordinatesTrail: [],
+  
+  // Controle de Animação Fluida 60FPS
+  currentCarLat: null,
+  currentCarLng: null,
+  currentCarHeading: 0,
+  animFrameId: null,
+
+  // Histórico e Player
+  historyPoints: [],
   historyPolyline: null,
   historyMarker: null,
+  playerIndex: 0,
+  playerTimer: null,
+  isPlaying: false,
+
+  // Cercas
   geofenceLayers: [],
+  pendingFenceCoords: null,
 
   // Dados em Tempo Real
   latestTelemetry: null,
   pollTimer: null,
   lastAlertCount: 0,
-
-  // Histórico e Player
-  historyPoints: [],
-  playerIndex: 0,
-  playerTimer: null,
-  isPlaying: false,
 
   // Simulador
   simTimer: null,
@@ -48,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==========================================
-// MAPA (LEAFLET)
+// MAPA (LEAFLET) & CAMADAS REAIS
 // ==========================================
 function initMap() {
   // Ponto inicial padrão (São Paulo - Marco Zero / Praça da Sé)
@@ -56,48 +70,141 @@ function initMap() {
 
   state.map = L.map('map', {
     zoomControl: false,
-    attributionControl: false
-  }).setView(defaultCoords, 15);
+    attributionControl: false,
+    maxZoom: 21
+  }).setView(defaultCoords, 17);
 
   // Zoom control no canto inferior direito
   L.control.zoom({ position: 'bottomright' }).addTo(state.map);
 
-  setMapLayer('dark');
+  // Define a camada padrão (Google Satélite Híbrido Real)
+  setMapLayer(state.mapLayerType);
 
-  // Marcador customizado do veículo com ícone e rotação
+  // Cria o Marcador Top-Down Realista do Carro
   const carIcon = L.divIcon({
-    className: 'custom-car-marker',
-    html: `
-      <div class="car-marker-container">
-        <div class="car-marker-halo"></div>
-        <div class="car-marker-body" id="mapCarIconBody">
-          <i class="fa-solid fa-car-side"></i>
-        </div>
-      </div>
-    `,
-    iconSize: [48, 48],
-    iconAnchor: [24, 24]
+    className: 'leaflet-car-marker-container',
+    html: getRealisticCarHtml(),
+    iconSize: [60, 110],
+    iconAnchor: [30, 55] // Centro geométrico de rotação
   });
 
-  state.vehicleMarker = L.marker(defaultCoords, { icon: carIcon }).addTo(state.map);
+  state.vehicleMarker = L.marker(defaultCoords, { icon: carIcon, zIndexOffset: 1000 }).addTo(state.map);
+
+  // Círculo suave de precisão do GPS
   state.accuracyCircle = L.circle(defaultCoords, {
-    radius: 30,
+    radius: 20,
     color: '#06b6d4',
     fillColor: '#06b6d4',
-    fillOpacity: 0.15,
+    fillOpacity: 0.12,
     weight: 1
   }).addTo(state.map);
 
-  // Clique no mapa para definir o centro da cerca virtual
+  // Trilha Neon ao Vivo que acompanha o trajeto recente do veículo
+  state.liveTrailPolyline = L.polyline([], {
+    color: '#38bdf8',
+    weight: 4,
+    opacity: 0.85,
+    lineJoin: 'round',
+    dashArray: null
+  }).addTo(state.map);
+
+  state.currentCarLat = defaultCoords[0];
+  state.currentCarLng = defaultCoords[1];
+  state.currentCarHeading = 0;
+
+  // Clique no mapa para definir centro da cerca virtual
   state.map.on('click', (e) => {
     const geofenceTab = document.getElementById('tab-geofences');
-    if (geofenceTab.classList.contains('active')) {
+    if (geofenceTab && geofenceTab.classList.contains('active')) {
       state.pendingFenceCoords = [e.latlng.lat, e.latlng.lng];
       updateTemporaryFenceMarker(e.latlng.lat, e.latlng.lng);
     }
   });
 }
 
+/**
+ * Retorna o HTML estruturado do carro realista com faróis dinâmicos e sombra 3D
+ */
+function getRealisticCarHtml() {
+  return `
+    <div class="realistic-car-wrapper" id="carMarkerWrapper">
+      <!-- Feixe de luz dos faróis dianteiros -->
+      <div class="headlight-beam" id="carHeadlights"></div>
+      
+      <!-- Sombra projetada no asfalto -->
+      <div class="car-ground-shadow"></div>
+      
+      <!-- Ondas de radar ao redor do carro -->
+      <div class="car-radar-ring"></div>
+      <div class="car-radar-ring ring-2"></div>
+
+      <!-- Carro Esportivo Visto de Cima (Top-Down SVG) -->
+      <svg class="topdown-car-svg" viewBox="0 0 60 110" width="48" height="88">
+        <defs>
+          <!-- Gradiente metálico da carroceria -->
+          <linearGradient id="carBodyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#0284c7" />
+            <stop offset="25%" stop-color="#38bdf8" />
+            <stop offset="50%" stop-color="#bae6fd" />
+            <stop offset="75%" stop-color="#38bdf8" />
+            <stop offset="100%" stop-color="#0369a1" />
+          </linearGradient>
+
+          <!-- Vidro fumê reflexivo -->
+          <linearGradient id="glassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#090d16" />
+            <stop offset="50%" stop-color="#1e293b" />
+            <stop offset="100%" stop-color="#0f172a" />
+          </linearGradient>
+
+          <!-- Teto solar panorâmico -->
+          <linearGradient id="sunroofGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#020617" />
+            <stop offset="100%" stop-color="#1e293b" />
+          </linearGradient>
+        </defs>
+        
+        <!-- Pneus -->
+        <rect x="2" y="20" width="6" height="15" rx="3" fill="#090d16" />
+        <rect x="52" y="20" width="6" height="15" rx="3" fill="#090d16" />
+        <rect x="2" y="74" width="6" height="16" rx="3" fill="#090d16" />
+        <rect x="52" y="74" width="6" height="16" rx="3" fill="#090d16" />
+        
+        <!-- Espelhos Retrovisores -->
+        <path d="M 4 35 Q 0 35 1 30 Q 5 30 6 35 Z" fill="#0284c7" />
+        <path d="M 56 35 Q 60 35 59 30 Q 55 30 54 35 Z" fill="#0284c7" />
+        
+        <!-- Chassi Principal / Carroceria Aerodinâmica -->
+        <path d="M 12 14 Q 30 6 48 14 Q 54 24 53 46 Q 55 76 52 98 Q 48 106 30 106 Q 12 106 8 98 Q 5 76 7 46 Q 6 24 12 14 Z" 
+              fill="url(#carBodyGrad)" stroke="#0369a1" stroke-width="1.2" />
+              
+        <!-- Capô Dianteiro - Linhas de Vinco -->
+        <path d="M 18 16 L 22 28 M 42 16 L 38 28" stroke="#0284c7" stroke-width="0.8" opacity="0.6" />
+              
+        <!-- Para-brisa Dianteiro -->
+        <path d="M 14 30 Q 30 26 46 30 L 43 45 Q 30 42 17 45 Z" fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.7" />
+        
+        <!-- Teto Panorâmico -->
+        <rect x="18" y="47" width="24" height="24" rx="2" fill="url(#sunroofGrad)" stroke="#0284c7" stroke-width="0.5" />
+        
+        <!-- Para-brisa Traseiro -->
+        <path d="M 17 73 Q 30 71 43 73 L 45 84 Q 30 86 15 84 Z" fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.7" />
+        
+        <!-- Faróis de LED Dianteiros (Xenon Ultra Brilhante) -->
+        <polygon points="10,14 18,11 16,17 10,18" fill="#f0f9ff" />
+        <polygon points="50,14 42,11 44,17 50,18" fill="#f0f9ff" />
+        
+        <!-- Lanternas Traseiras de Freio (LED Vermelho Neon) -->
+        <polygon class="brake-light" points="9,99 18,102 17,105 9,103" fill="#ef4444" />
+        <polygon class="brake-light" points="51,99 42,102 43,105 51,103" fill="#ef4444" />
+      </svg>
+    </div>
+  `;
+}
+
+/**
+ * Alterna entre imagens de satélite reais de alta resolução, ruas ou dark mode
+ */
 function setMapLayer(type) {
   if (state.currentTileLayer) {
     state.map.removeLayer(state.currentTileLayer);
@@ -105,21 +212,140 @@ function setMapLayer(type) {
 
   let tileUrl = '';
   let attribution = '';
+  let maxZoom = 20;
 
-  if (type === 'dark') {
+  if (type === 'google_hybrid') {
+    // Google Satélite Real HD com ruas e nomes de bairros
+    tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+    attribution = '&copy; Google Maps Satélite HD';
+    maxZoom = 21;
+  } else if (type === 'google_streets') {
+    // Google Ruas nítido
+    tileUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+    attribution = '&copy; Google Maps';
+    maxZoom = 20;
+  } else if (type === 'esri_satellite') {
+    // Esri World Imagery (Satélite puro sem letreiros)
+    tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    attribution = '&copy; Esri World Imagery';
+    maxZoom = 19;
+  } else {
+    // CartoDB Dark Matter
     tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
     attribution = '&copy; OpenStreetMap &copy; CARTO';
-  } else {
-    tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    attribution = '&copy; OpenStreetMap contributors';
+    maxZoom = 19;
   }
 
   state.currentTileLayer = L.tileLayer(tileUrl, {
-    maxZoom: 19,
-    subdomains: 'abcd',
-    attribution
+    maxZoom,
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
   }).addTo(state.map);
+
   state.mapLayerType = type;
+  localStorage.setItem('trackzero_layer', type);
+
+  // Atualiza pílulas visuais no dock
+  document.querySelectorAll('.layer-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.layer === type);
+  });
+}
+
+// ==========================================
+// MOTOR DE ANIMAÇÃO 60FPS E INTERPOLAÇÃO
+// ==========================================
+
+/**
+ * Movimenta o carro de forma suave e cinematográfica entre dois pontos GPS,
+ * calculando a rotação de menor arco (sem girar 360 graus) e animando a 60 frames por segundo.
+ */
+function smoothMoveVehicle(targetLat, targetLng, targetHeading, targetSpeed, isMoving) {
+  if (state.currentCarLat === null || state.currentCarLng === null) {
+    state.currentCarLat = targetLat;
+    state.currentCarLng = targetLng;
+    state.currentCarHeading = targetHeading;
+    if (state.vehicleMarker) {
+      state.vehicleMarker.setLatLng([targetLat, targetLng]);
+      updateMarkerRotation(targetHeading);
+    }
+    return;
+  }
+
+  const startLat = state.currentCarLat;
+  const startLng = state.currentCarLng;
+  const startHeading = state.currentCarHeading;
+
+  // Calcula menor arco para a rotação da bússola
+  let diffHeading = ((targetHeading - startHeading + 540) % 360) - 180;
+  
+  // Duração da transição fluida baseada na distância
+  const durationMs = isMoving ? 1400 : 800;
+  const startTime = performance.now();
+
+  if (state.animFrameId) {
+    cancelAnimationFrame(state.animFrameId);
+  }
+
+  function frame(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / durationMs, 1);
+    
+    // Curva de amortecimento suave (easeOutCubic)
+    const ease = 1 - Math.pow(1 - progress, 3);
+
+    const curLat = startLat + (targetLat - startLat) * ease;
+    const curLng = startLng + (targetLng - startLng) * ease;
+    const curHeading = (startHeading + diffHeading * ease + 360) % 360;
+
+    state.currentCarLat = curLat;
+    state.currentCarLng = curLng;
+    state.currentCarHeading = curHeading;
+
+    if (state.vehicleMarker) {
+      const latLng = [curLat, curLng];
+      state.vehicleMarker.setLatLng(latLng);
+      updateMarkerRotation(curHeading);
+      state.accuracyCircle.setLatLng(latLng);
+
+      // Atualiza a trilha neon do carro
+      if (state.showTrail && isMoving) {
+        state.recentCoordinatesTrail.push(latLng);
+        if (state.recentCoordinatesTrail.length > 60) {
+          state.recentCoordinatesTrail.shift();
+        }
+        state.liveTrailPolyline.setLatLngs(state.recentCoordinatesTrail);
+      }
+
+      // Câmera suave que acompanha o carro
+      if (state.followVehicle) {
+        state.map.panTo(latLng, { animate: false });
+      }
+    }
+
+    if (progress < 1) {
+      state.animFrameId = requestAnimationFrame(frame);
+    } else {
+      state.animFrameId = null;
+    }
+  }
+
+  state.animFrameId = requestAnimationFrame(frame);
+
+  // Atualiza classes visuais de faróis e radar do carro
+  const wrapper = document.getElementById('carMarkerWrapper');
+  if (wrapper) {
+    if (isMoving) {
+      wrapper.classList.remove('parked');
+    } else {
+      wrapper.classList.add('parked');
+    }
+  }
+}
+
+function updateMarkerRotation(headingDegrees) {
+  const wrapper = document.getElementById('carMarkerWrapper');
+  if (wrapper) {
+    wrapper.style.transform = `rotate(${headingDegrees}deg)`;
+  }
 }
 
 // ==========================================
@@ -128,7 +354,6 @@ function setMapLayer(type) {
 async function startLivePolling() {
   if (state.pollTimer) clearInterval(state.pollTimer);
 
-  // Primeira execução imediata
   await fetchLiveTelemetry();
 
   state.pollTimer = setInterval(async () => {
@@ -139,7 +364,6 @@ async function startLivePolling() {
 async function fetchLiveTelemetry() {
   updateConnectionStatus('connecting', 'Atualizando...');
 
-  // Se estiver em modo demonstração local sem backend
   if (state.demoMode) {
     simulateOfflineTelemetry();
     return;
@@ -162,7 +386,6 @@ async function fetchLiveTelemetry() {
     updateConnectionStatus('online', 'Ao Vivo');
     fetchRecentAlerts();
   } catch (err) {
-    // Se a API não responder e ainda não houver dados, oferece usar o simulador
     updateConnectionStatus('offline', 'API Desconectada');
   }
 }
@@ -184,7 +407,7 @@ function updateConnectionStatus(status, text) {
 }
 
 // ==========================================
-// ATUALIZAÇÃO DA INTERFACE (TELEMETRIA)
+// ATUALIZAÇÃO DA INTERFACE (TELEMETRIA E HUD)
 // ==========================================
 function updateDashboardUI(data) {
   state.latestTelemetry = data;
@@ -197,12 +420,35 @@ function updateDashboardUI(data) {
   const ignition = data.ignition_status === 1;
   const isMoving = data.is_moving === 1 || speed > 2;
 
-  // Atualiza Velocímetro
+  // 1. Atualiza Velocímetro Lateral
   document.getElementById('liveSpeed').textContent = speed;
   const speedPct = Math.min(100, Math.round((speed / 140) * 100));
   document.getElementById('speedBarFill').style.width = `${speedPct}%`;
 
-  // Status de Movimento
+  // 2. Atualiza HUD Flutuante Direto no Mapa
+  const hudSpeed = document.getElementById('hudSpeedVal');
+  if (hudSpeed) hudSpeed.textContent = speed;
+
+  const hudIgn = document.getElementById('hudIgnitionBadge');
+  const hudIgnText = document.getElementById('hudIgnitionText');
+  if (hudIgn && hudIgnText) {
+    hudIgn.className = `hud-badge ${ignition ? 'badge-on' : 'badge-off'}`;
+    hudIgnText.textContent = ignition ? 'Ignição On' : 'Ignição Off';
+  }
+
+  const hudMotion = document.getElementById('hudMotionBadge');
+  const hudMotionText = document.getElementById('hudMotionText');
+  if (hudMotion && hudMotionText) {
+    hudMotion.className = `hud-badge ${isMoving ? 'badge-moving' : 'badge-parked'}`;
+    hudMotionText.textContent = isMoving ? 'Em Viagem' : 'Parado';
+  }
+
+  const hudCoords = document.getElementById('hudCoordsText');
+  if (hudCoords && lat && lng) {
+    hudCoords.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)} • ${heading}° ${getCardinalDirection(heading)}`;
+  }
+
+  // 3. Status de Movimento no Painel Lateral
   const motionTag = document.getElementById('motionStatus');
   if (isMoving) {
     motionTag.className = 'tag-status tag-moving';
@@ -212,7 +458,7 @@ function updateDashboardUI(data) {
     motionTag.textContent = 'Parado';
   }
 
-  // Ignição
+  // 4. Ignição no Painel Lateral
   const ignText = document.getElementById('liveIgnition');
   const ignWrap = document.getElementById('ignitionIconWrap');
   if (ignition) {
@@ -227,7 +473,7 @@ function updateDashboardUI(data) {
     ignWrap.style.color = 'var(--text-muted)';
   }
 
-  // Bateria
+  // 5. Bateria
   const battVal = document.getElementById('liveBattery');
   const battIcon = document.getElementById('batteryIcon');
   battVal.textContent = `${battery}%`;
@@ -239,17 +485,16 @@ function updateDashboardUI(data) {
     battIcon.className = 'fa-solid fa-battery-quarter text-rose';
   }
 
-  // Bússola / Direção
+  // 6. Bússola Lateral
   const headingVal = document.getElementById('liveHeading');
   const compassIcon = document.getElementById('headingCompass');
   compassIcon.style.transform = `rotate(${heading}deg)`;
   headingVal.textContent = `${heading}° ${getCardinalDirection(heading)}`;
 
-  // Coordenadas
+  // 7. Coordenadas e Link Google Maps
   document.getElementById('liveCoords').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
   document.getElementById('btnExternalMap').href = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 
-  // Tempo relativo
   if (data.updated_at) {
     document.getElementById('liveLastSignal').textContent = formatRelativeTime(data.updated_at);
   }
@@ -259,25 +504,9 @@ function updateDashboardUI(data) {
   document.getElementById('mIgnitionVal').textContent = ignition ? 'Ignição On' : 'Ignição Off';
   document.getElementById('mUpdatedVal').textContent = formatRelativeTime(data.updated_at);
 
-  // Atualiza Marcador no Mapa
-  if (state.vehicleMarker && lat && lng) {
-    const latLng = [lat, lng];
-    state.vehicleMarker.setLatLng(latLng);
-    state.accuracyCircle.setLatLng(latLng);
-    if (data.accuracy) {
-      state.accuracyCircle.setRadius(Math.max(15, data.accuracy));
-    }
-
-    // Rotaciona o ícone do carro no mapa
-    const mapIconEl = document.getElementById('mapCarIconBody');
-    if (mapIconEl) {
-      mapIconEl.style.transform = `rotate(${heading - 90}deg)`;
-    }
-
-    // Seguir veículo automaticamente se ativado
-    if (state.followVehicle) {
-      state.map.panTo(latLng, { animate: true, duration: 0.8 });
-    }
+  // 8. Executa a movimentação fluida do carro a 60FPS
+  if (lat && lng) {
+    smoothMoveVehicle(lat, lng, heading, speed, isMoving);
   }
 }
 
@@ -319,9 +548,7 @@ async function loadDevices() {
       });
       state.activeDeviceId = select.value;
     }
-  } catch {
-    // Modo offline / inicial
-  }
+  } catch {}
 }
 
 async function loadGeofences() {
@@ -330,13 +557,10 @@ async function loadGeofences() {
     if (!res.ok) return;
     const data = await res.json();
     renderGeofences(data.geofences || []);
-  } catch {
-    // Offline
-  }
+  } catch {}
 }
 
 function renderGeofences(fences) {
-  // Limpa camadas anteriores do mapa
   state.geofenceLayers.forEach(l => state.map.removeLayer(l));
   state.geofenceLayers = [];
 
@@ -349,12 +573,11 @@ function renderGeofences(fences) {
   }
 
   fences.forEach(f => {
-    // Desenha círculo no mapa com visual suave
     const circle = L.circle([f.center_latitude, f.center_longitude], {
       radius: f.radius_meters,
       color: '#f59e0b',
       fillColor: '#f59e0b',
-      fillOpacity: 0.12,
+      fillOpacity: 0.15,
       dashArray: '5, 8',
       weight: 2
     }).addTo(state.map);
@@ -362,7 +585,6 @@ function renderGeofences(fences) {
     circle.bindPopup(`<strong>Cerca: ${f.name}</strong><br>Raio: ${f.radius_meters}m`);
     state.geofenceLayers.push(circle);
 
-    // Adiciona na lista da barra lateral
     const item = document.createElement('div');
     item.className = 'fence-item';
     item.innerHTML = `
@@ -397,7 +619,7 @@ function updateTemporaryFenceMarker(lat, lng) {
     radius,
     color: '#06b6d4',
     fillColor: '#06b6d4',
-    fillOpacity: 0.2,
+    fillOpacity: 0.25,
     weight: 2
   }).addTo(state.map);
 
@@ -467,17 +689,14 @@ async function loadTripHistory() {
       return;
     }
 
-    // Exibe card de estatísticas
     document.getElementById('historyStatsCard').classList.remove('hidden');
     document.getElementById('hDist').textContent = `${data.totalDistanceKm} km`;
     document.getElementById('hMaxSpeed').textContent = `${data.maxSpeed} km/h`;
     document.getElementById('hAvgSpeed').textContent = `${data.avgSpeed} km/h`;
     document.getElementById('hPoints').textContent = data.totalPoints;
 
-    // Plota linha no mapa
     drawHistoryPolyline(state.historyPoints);
 
-    // Prepara o slider
     const slider = document.getElementById('historyTimeline');
     slider.max = state.historyPoints.length - 1;
     slider.value = 0;
@@ -497,20 +716,19 @@ function drawHistoryPolyline(points) {
 
   const latLngs = points.map(p => [p.latitude, p.longitude]);
 
-  // Linha brilhante com estilo futurista
+  // Linha neon brilhante sobre o satélite
   state.historyPolyline = L.polyline(latLngs, {
-    color: '#06b6d4',
-    weight: 4,
-    opacity: 0.85,
+    color: '#38bdf8',
+    weight: 5,
+    opacity: 0.9,
     lineJoin: 'round'
   }).addTo(state.map);
 
-  // Marcador de reprodução
   const replayIcon = L.divIcon({
     className: 'custom-replay-marker',
-    html: '<div style="width:20px;height:20px;background:#38bdf8;border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px #38bdf8;"></div>',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10]
+    html: '<div style="width:22px;height:22px;background:#38bdf8;border:3px solid #fff;border-radius:50%;box-shadow:0 0 14px #38bdf8;"></div>',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11]
   });
 
   state.historyMarker = L.marker(latLngs[0], { icon: replayIcon }).addTo(state.map);
@@ -569,14 +787,14 @@ const SIMULATION_ROUTES = {
   drive_speeding: [
     { lat: -23.56000, lng: -46.645000, speed: 50, heading: 180, batt: 90 },
     { lat: -23.56300, lng: -46.645500, speed: 75, heading: 180, batt: 89 },
-    { lat: -23.56700, lng: -46.646000, speed: 94, heading: 180, batt: 88 }, // DISPARA ALERTA > 80 km/h!
+    { lat: -23.56700, lng: -46.646000, speed: 94, heading: 180, batt: 88 },
     { lat: -23.57100, lng: -46.646500, speed: 85, heading: 180, batt: 88 },
     { lat: -23.57500, lng: -46.647000, speed: 55, heading: 180, batt: 87 }
   ],
   drive_geofence_exit: [
-    { lat: -23.55052, lng: -46.633308, speed: 0, heading: 90, batt: 85 }, // Dentro da cerca (marco zero)
+    { lat: -23.55052, lng: -46.633308, speed: 0, heading: 90, batt: 85 },
     { lat: -23.55050, lng: -46.634500, speed: 25, heading: 90, batt: 85 },
-    { lat: -23.55040, lng: -46.638000, speed: 50, heading: 90, batt: 84 }, // Saiu dos 250m! ALERTA
+    { lat: -23.55040, lng: -46.638000, speed: 50, heading: 90, batt: 84 },
     { lat: -23.55030, lng: -46.642000, speed: 55, heading: 90, batt: 83 }
   ]
 };
@@ -612,7 +830,6 @@ function startSimulation() {
 
     logSim(`Envio #${state.simStep + 1}: ${pt.speed} km/h | Coords: ${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}`);
 
-    // Atualiza interface imediatamente
     updateDashboardUI({
       latitude: pt.lat,
       longitude: pt.lng,
@@ -624,7 +841,6 @@ function startSimulation() {
       updated_at: payload.timestamp
     });
 
-    // Envia requisição HTTP para a API real se estiver configurada
     try {
       await fetch(`${state.apiUrl}/api/v1/telemetry/json`, {
         method: 'POST',
@@ -633,11 +849,11 @@ function startSimulation() {
       });
       logSim(`✔ Resposta 200 da API Cloudflare`);
     } catch {
-      logSim(`ℹ Executando em modo local (API offline)`);
+      logSim(`ℹ Executando em modo local`);
     }
 
     state.simStep++;
-  }, 3000);
+  }, 2500);
 }
 
 function stopSimulation() {
@@ -684,12 +900,18 @@ function initEventListeners() {
       const tabId = `tab-${btn.dataset.tab}`;
       document.getElementById(tabId).classList.add('active');
 
-      // Se mudou de aba, redimensiona mapa
       setTimeout(() => state.map.invalidateSize(), 200);
     });
   });
 
-  // Troca de Dispositivo Selecionado
+  // Seletor de Camadas no Dock (Satélite Real / Ruas / Dark)
+  document.querySelectorAll('.layer-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setMapLayer(btn.dataset.layer);
+    });
+  });
+
+  // Troca de Dispositivo
   document.getElementById('deviceSelect').addEventListener('change', (e) => {
     state.activeDeviceId = e.target.value;
     fetchLiveTelemetry();
@@ -697,21 +919,42 @@ function initEventListeners() {
 
   // Centralizar Veículo
   document.getElementById('btnCenterVehicle').addEventListener('click', () => {
-    if (state.latestTelemetry) {
-      state.map.setView([state.latestTelemetry.latitude, state.latestTelemetry.longitude], 16);
+    if (state.currentCarLat && state.currentCarLng) {
+      state.map.setView([state.currentCarLat, state.currentCarLng], 18, { animate: true });
     }
   });
 
-  // Alternar Camadas do Mapa
-  document.getElementById('btnToggleMapLayer').addEventListener('click', () => {
-    setMapLayer(state.mapLayerType === 'dark' ? 'streets' : 'dark');
-  });
+  // Focar no Carro (Zoom)
+  const zoomBtn = document.getElementById('btnZoomVehicle');
+  if (zoomBtn) {
+    zoomBtn.addEventListener('click', () => {
+      if (state.currentCarLat && state.currentCarLng) {
+        state.map.setView([state.currentCarLat, state.currentCarLng], 19, { animate: true });
+      }
+    });
+  }
 
-  // Seguir Veículo
+  // Ativar / Desativar Trilha Luminosa
+  const trailBtn = document.getElementById('btnToggleTrail');
+  if (trailBtn) {
+    trailBtn.addEventListener('click', () => {
+      state.showTrail = !state.showTrail;
+      trailBtn.classList.toggle('active', state.showTrail);
+      if (!state.showTrail) {
+        state.liveTrailPolyline.setLatLngs([]);
+        state.recentCoordinatesTrail = [];
+      }
+    });
+  }
+
+  // Seguir Veículo Automaticamente
   const followBtn = document.getElementById('btnFollowVehicle');
   followBtn.addEventListener('click', () => {
     state.followVehicle = !state.followVehicle;
     followBtn.classList.toggle('active', state.followVehicle);
+    if (state.followVehicle && state.currentCarLat) {
+      state.map.panTo([state.currentCarLat, state.currentCarLng], { animate: true });
+    }
   });
 
   // Copiar Coordenadas

@@ -1000,43 +1000,250 @@ body {
   display: none !important;
 }
 
-/* Custom Marker Styling for Leaflet */
-.car-marker-container {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ==========================================================
+   TOP-DOWN REALISTIC CAR MARKER WITH DYNAMIC HEADLIGHTS
+   ========================================================== */
+
+.realistic-car-wrapper {
+  width: 60px;
+  height: 110px;
   position: relative;
-}
-
-.car-marker-halo {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--accent-cyan-glow);
-  animation: marker-pulse 2s infinite ease-out;
-}
-
-.car-marker-body {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #0284c7, #06b6d4);
-  border: 2px solid #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 1rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  transition: transform 0.4s ease;
-  z-index: 2;
+  pointer-events: none;
+  transform-origin: center center;
+  transition: transform 0.2s linear;
 }
 
-@keyframes marker-pulse {
-  0% { transform: scale(0.6); opacity: 1; }
-  100% { transform: scale(1.4); opacity: 0; }
+/* Headlight Light Beams (Projetados à frente do carro) */
+.headlight-beam {
+  position: absolute;
+  top: -85px;
+  width: 140px;
+  height: 120px;
+  background: radial-gradient(ellipse 70% 80% at 50% 100%, rgba(240, 249, 255, 0.65) 0%, rgba(56, 189, 248, 0.35) 45%, rgba(6, 182, 212, 0) 80%);
+  transform-origin: bottom center;
+  pointer-events: none;
+  filter: blur(2px);
+  opacity: 0.85;
+  transition: opacity 0.5s ease;
+  z-index: 1;
+}
+
+.realistic-car-wrapper.parked .headlight-beam {
+  opacity: 0.25;
+}
+
+/* Sombreamento realista no asfalto */
+.car-ground-shadow {
+  position: absolute;
+  top: 18px;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 20px;
+  filter: blur(8px);
+  transform: translateY(6px);
+  z-index: 1;
+}
+
+/* Ondas de radar ao redor do carro em movimento */
+.car-radar-ring {
+  position: absolute;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 2px solid rgba(6, 182, 212, 0.7);
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+  animation: radar-wave 2.2s infinite ease-out;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.car-radar-ring.ring-2 {
+  animation-delay: 1.1s;
+}
+
+.realistic-car-wrapper.parked .car-radar-ring {
+  display: none;
+}
+
+@keyframes radar-wave {
+  0% { transform: scale(0.4); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* SVG do Carro */
+.topdown-car-svg {
+  position: relative;
+  z-index: 3;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.6));
+  transition: transform 0.15s ease;
+}
+
+/* Lanterna traseira quando freando/parando */
+.realistic-car-wrapper.parked .topdown-car-svg .brake-light {
+  filter: drop-shadow(0 0 8px #ef4444);
+}
+
+/* ==========================================================
+   FLOATING HUD ON MAP & LAYER SELECTOR
+   ========================================================== */
+
+/* HUD de Velocidade e Status no Topo do Mapa */
+.map-hud-overlay {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 990;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  padding: 10px 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  transition: var(--transition-smooth);
+}
+
+.map-hud-overlay:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 12px 36px rgba(6, 182, 212, 0.25);
+}
+
+.hud-speed-box {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.hud-speed-num {
+  font-family: var(--font-heading);
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: -1px;
+}
+
+.hud-speed-unit {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+}
+
+.hud-divider {
+  width: 1px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.hud-info-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-row {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hud-badge.badge-on {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--accent-emerald);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.hud-badge.badge-off {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.hud-badge.badge-moving {
+  background: rgba(6, 182, 212, 0.2);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  animation: pulse-glow 2s infinite;
+}
+
+.hud-badge.badge-parked {
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--text-secondary);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.hud-coords {
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* Dock Seletor de Mapa (Satélite / Ruas / Dark) */
+.map-layer-dock {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 990;
+  display: flex;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 6px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+.layer-pill {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition-fast);
+}
+
+.layer-pill:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.layer-pill.active {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  color: #fff;
+  box-shadow: 0 2px 10px var(--accent-cyan-glow);
 }
 
 /* Responsive Media Queries */

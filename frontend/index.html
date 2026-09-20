@@ -328,16 +328,51 @@
       <section class="map-section">
         <div id="map" class="map-viewport"></div>
 
-        <!-- Floating Map Controls -->
-        <div class="floating-map-controls">
-          <button id="btnToggleMapLayer" class="floating-btn" title="Alternar Mapa (Satélite / Dark / Ruas)">
-            <i class="fa-solid fa-layer-group"></i>
+        <!-- Floating Telemetry HUD on Map -->
+        <div class="map-hud-overlay" id="mapHudOverlay">
+          <div class="hud-speed-box">
+            <span id="hudSpeedVal" class="hud-speed-num">0</span>
+            <span class="hud-speed-unit">km/h</span>
+          </div>
+          <div class="hud-divider"></div>
+          <div class="hud-info-box">
+            <div class="hud-row">
+              <span id="hudIgnitionBadge" class="hud-badge badge-off">
+                <i class="fa-solid fa-power-off"></i> <span id="hudIgnitionText">Ignição Off</span>
+              </span>
+              <span id="hudMotionBadge" class="hud-badge badge-parked">
+                <i class="fa-solid fa-parking"></i> <span id="hudMotionText">Parado</span>
+              </span>
+            </div>
+            <div class="hud-coords" id="hudCoordsText">
+              -23.550520, -46.633308
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating Map Style Selector -->
+        <div class="map-layer-dock">
+          <button class="layer-pill active" data-layer="google_hybrid" title="Satélite Real com Ruas">
+            <i class="fa-solid fa-satellite"></i> Satélite Real
           </button>
+          <button class="layer-pill" data-layer="google_streets" title="Mapa de Ruas">
+            <i class="fa-solid fa-map"></i> Ruas
+          </button>
+          <button class="layer-pill" data-layer="dark" title="Modo Noturno Minimalista">
+            <i class="fa-solid fa-moon"></i> Dark
+          </button>
+        </div>
+
+        <!-- Floating Map Action Controls -->
+        <div class="floating-map-controls">
           <button id="btnFollowVehicle" class="floating-btn active" title="Seguir Veículo Automaticamente">
             <i class="fa-solid fa-crosshairs"></i>
           </button>
-          <button id="btnToggleTraffic" class="floating-btn" title="Zoom Fit">
-            <i class="fa-solid fa-expand"></i>
+          <button id="btnZoomVehicle" class="floating-btn" title="Focar no Carro (Zoom)">
+            <i class="fa-solid fa-magnifying-glass-location"></i>
+          </button>
+          <button id="btnToggleTrail" class="floating-btn active" title="Ativar/Desativar Trilha Luminosa">
+            <i class="fa-solid fa-route"></i>
           </button>
         </div>
 
