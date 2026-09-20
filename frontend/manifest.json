@@ -1,0 +1,60 @@
+{
+  "name": "TrackZero - Rastreador Veicular",
+  "short_name": "TrackZero",
+  "description": "Rastreamento veicular em tempo real com imagens de satélite HD, velocímetro e alertas instantâneos.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f19",
+  "theme_color": "#0b0f19",
+  "orientation": "any",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": [
+    "navigation",
+    "utilities",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ao Vivo",
+      "short_name": "Ao Vivo",
+      "description": "Acompanhar veículo em tempo real",
+      "url": "./#tab-live",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Histórico de Rotas",
+      "short_name": "Histórico",
+      "description": "Ver rotas anteriores e estatísticas",
+      "url": "./#tab-history",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

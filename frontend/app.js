@@ -65,14 +65,14 @@ document.addEventListener('DOMContentLoaded', () => {
 // MAPA (LEAFLET) & CAMADAS REAIS
 // ==========================================
 function initMap() {
-  // Ponto inicial padrão (São Paulo - Marco Zero / Praça da Sé)
-  const defaultCoords = [-23.55052, -46.633308];
+  // Ponto inicial padrão — será substituído pela geolocalização real
+  const defaultCoords = [-22.9002, -43.5578]; // Campo Grande - RJ (fallback)
 
   state.map = L.map('map', {
     zoomControl: false,
     attributionControl: false,
     maxZoom: 21
-  }).setView(defaultCoords, 17);
+  }).setView(defaultCoords, 16);
 
   // Zoom control no canto inferior direito
   L.control.zoom({ position: 'bottomright' }).addTo(state.map);
@@ -80,19 +80,19 @@ function initMap() {
   // Define a camada padrão (Google Satélite Híbrido Real)
   setMapLayer(state.mapLayerType);
 
-  // Cria o Marcador Top-Down Realista do Carro
+  // Tamanho realístico para o marcador do carro (escala de rua)
   const carIcon = L.divIcon({
     className: 'leaflet-car-marker-container',
     html: getRealisticCarHtml(),
-    iconSize: [60, 110],
-    iconAnchor: [30, 55] // Centro geométrico de rotação
+    iconSize: [28, 50],
+    iconAnchor: [14, 25] // Centro geométrico de rotação
   });
 
   state.vehicleMarker = L.marker(defaultCoords, { icon: carIcon, zIndexOffset: 1000 }).addTo(state.map);
 
   // Círculo suave de precisão do GPS
   state.accuracyCircle = L.circle(defaultCoords, {
-    radius: 20,
+    radius: 15,
     color: '#06b6d4',
     fillColor: '#06b6d4',
     fillOpacity: 0.12,
@@ -102,7 +102,7 @@ function initMap() {
   // Trilha Neon ao Vivo que acompanha o trajeto recente do veículo
   state.liveTrailPolyline = L.polyline([], {
     color: '#38bdf8',
-    weight: 4,
+    weight: 3,
     opacity: 0.85,
     lineJoin: 'round',
     dashArray: null
@@ -111,6 +111,29 @@ function initMap() {
   state.currentCarLat = defaultCoords[0];
   state.currentCarLng = defaultCoords[1];
   state.currentCarHeading = 0;
+
+  // Tenta obter geolocalização real do browser para centralizar o mapa
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        state.map.setView([lat, lng], 17, { animate: true });
+        state.currentCarLat = lat;
+        state.currentCarLng = lng;
+        state.vehicleMarker.setLatLng([lat, lng]);
+        state.accuracyCircle.setLatLng([lat, lng]);
+        if (position.coords.accuracy) {
+          state.accuracyCircle.setRadius(Math.min(position.coords.accuracy, 50));
+        }
+      },
+      () => {
+        // Sem permissão ou erro: mantém o fallback (Campo Grande - RJ)
+        console.info('[TrackZero] Geolocalização do browser não autorizada, usando fallback.');
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+    );
+  }
 
   // Clique no mapa para definir centro da cerca virtual
   state.map.on('click', (e) => {
@@ -138,8 +161,8 @@ function getRealisticCarHtml() {
       <div class="car-radar-ring"></div>
       <div class="car-radar-ring ring-2"></div>
 
-      <!-- Carro Esportivo Visto de Cima (Top-Down SVG) -->
-      <svg class="topdown-car-svg" viewBox="0 0 60 110" width="48" height="88">
+      <!-- Carro Esportivo Visto de Cima (Top-Down SVG) - Escala de rua realística -->
+      <svg class="topdown-car-svg" viewBox="0 0 60 110" width="22" height="40">
         <defs>
           <!-- Gradiente metálico da carroceria -->
           <linearGradient id="carBodyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -775,27 +798,28 @@ function togglePlayPause() {
 // ==========================================
 // SIMULADOR DE TRAJETO EM TEMPO REAL
 // ==========================================
+// Rotas de simulação em Campo Grande - Rio de Janeiro (bairro do usuário)
 const SIMULATION_ROUTES = {
   drive_city: [
-    { lat: -23.55052, lng: -46.633308, speed: 0, heading: 0, batt: 95 },
-    { lat: -23.55120, lng: -46.634100, speed: 28, heading: 210, batt: 95 },
-    { lat: -23.55250, lng: -46.635800, speed: 42, heading: 215, batt: 94 },
-    { lat: -23.55400, lng: -46.637500, speed: 48, heading: 210, batt: 94 },
-    { lat: -23.55620, lng: -46.640100, speed: 35, heading: 220, batt: 93 },
-    { lat: -23.55800, lng: -46.642500, speed: 0, heading: 220, batt: 93 }
+    { lat: -22.9002, lng: -43.5578, speed: 0, heading: 90, batt: 95 },
+    { lat: -22.9003, lng: -43.5560, speed: 28, heading: 85, batt: 95 },
+    { lat: -22.9005, lng: -43.5535, speed: 42, heading: 80, batt: 94 },
+    { lat: -22.9010, lng: -43.5510, speed: 48, heading: 75, batt: 94 },
+    { lat: -22.9018, lng: -43.5485, speed: 35, heading: 70, batt: 93 },
+    { lat: -22.9025, lng: -43.5460, speed: 0, heading: 65, batt: 93 }
   ],
   drive_speeding: [
-    { lat: -23.56000, lng: -46.645000, speed: 50, heading: 180, batt: 90 },
-    { lat: -23.56300, lng: -46.645500, speed: 75, heading: 180, batt: 89 },
-    { lat: -23.56700, lng: -46.646000, speed: 94, heading: 180, batt: 88 },
-    { lat: -23.57100, lng: -46.646500, speed: 85, heading: 180, batt: 88 },
-    { lat: -23.57500, lng: -46.647000, speed: 55, heading: 180, batt: 87 }
+    { lat: -22.9030, lng: -43.5440, speed: 50, heading: 0, batt: 90 },
+    { lat: -22.9010, lng: -43.5435, speed: 78, heading: 355, batt: 89 },
+    { lat: -22.8990, lng: -43.5430, speed: 95, heading: 350, batt: 88 },
+    { lat: -22.8970, lng: -43.5425, speed: 82, heading: 352, batt: 88 },
+    { lat: -22.8950, lng: -43.5420, speed: 55, heading: 355, batt: 87 }
   ],
   drive_geofence_exit: [
-    { lat: -23.55052, lng: -46.633308, speed: 0, heading: 90, batt: 85 },
-    { lat: -23.55050, lng: -46.634500, speed: 25, heading: 90, batt: 85 },
-    { lat: -23.55040, lng: -46.638000, speed: 50, heading: 90, batt: 84 },
-    { lat: -23.55030, lng: -46.642000, speed: 55, heading: 90, batt: 83 }
+    { lat: -22.9002, lng: -43.5578, speed: 0, heading: 270, batt: 85 },
+    { lat: -22.9003, lng: -43.5600, speed: 25, heading: 265, batt: 85 },
+    { lat: -22.9005, lng: -43.5630, speed: 50, heading: 260, batt: 84 },
+    { lat: -22.9008, lng: -43.5665, speed: 55, heading: 255, batt: 83 }
   ]
 };
 
@@ -872,7 +896,7 @@ function logSim(msg) {
 }
 
 function simulateOfflineTelemetry() {
-  const defaultCoords = [-23.55052, -46.633308];
+  const defaultCoords = [-22.9002, -43.5578]; // Campo Grande - RJ
   updateDashboardUI({
     latitude: defaultCoords[0],
     longitude: defaultCoords[1],
